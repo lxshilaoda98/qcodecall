@@ -203,7 +203,7 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 					if areaNumber == string(data[2]) {
 						pr.QCellCore = "本地"
 					}
-					return
+					return pr, nil
 				}
 			}
 			return nil, errors.New("phone's data not found")
