@@ -170,6 +170,8 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 			}
 
 		} else {
+			//号码手机 有可能前面是加了0,去除即可
+			phone_num = checkWdPhone(phone_num)
 			var left int32
 			phone_seven_int, err := getN(phone_num[0:7])
 			if err != nil {
@@ -241,6 +243,19 @@ func checkFixed(number string) string {
 		return "是"
 	} else {
 		return "否"
+	}
+}
+
+//endregion
+
+//region 验证是否是加0的手机
+func checkWdPhone(number string) string {
+	reg, _ := regexp.Compile("^(0?(13[0-9]|14[01456879]|15[0-35-9]|16[2567]|17[0-8]|18[0-9]|19[0-35-9])\\d{8})$")
+	check := reg.FindAllString(number, -1)
+	if len(check) > 0 {
+		return number[1:]
+	} else {
+		return number
 	}
 }
 
