@@ -151,8 +151,10 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 		//可能是固话..进行查库处理
 		isFixed := checkFixed(phone_num)
 		if isFixed == "是" {
-			pr.QCellCore = "国内"
-			pr.PhoneNum = phone_num
+			pr = &PhoneRecord{
+				PhoneNum: phone_num,
+				CardType: "国内",
+			}
 			//固话的话，直接去调用数据库的数据
 			CustomerSqlDB.Raw("select Province,City,AreaNumber from call_areacode where AreaNumber = ? or AreaNumber = ?",
 				phone_num[:3], phone_num[:4]).Row().Scan(&pr.Province, &pr.City, &pr.AreaZone)
@@ -211,8 +213,10 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 		}
 		return pr, nil
 	} else if len(phone_num) == 8 {
-		pr.QCellCore = "本地"
-		pr.PhoneNum = phone_num
+		pr = &PhoneRecord{
+			PhoneNum: phone_num,
+			CardType: "本地",
+		}
 		return pr, nil
 	} else {
 		return nil, errors.New("未知号码:" + phone_num)
