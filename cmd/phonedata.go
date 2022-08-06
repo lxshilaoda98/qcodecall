@@ -2,18 +2,12 @@ package main
 
 import (
 	"fmt"
-	"os"
-
-	"github.com/xluohome/phonedata"
+	"github.com/lxshilaoda98/phonedata"
 )
 
 func main() {
 
-	if len(os.Args) < 2 {
-		fmt.Print("请输入手机号")
-		return
-	}
-	pr, err := phonedata.Find(os.Args[1])
+	pr, err := phonedata.Find("17600082595", "", nil)
 	if err != nil {
 		fmt.Printf("%s", err)
 		return
