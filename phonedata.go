@@ -202,8 +202,12 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 						AreaZone: string(data[3]),
 						CardType: card_str,
 					}
+					fmt.Println("areaNumber>>>", areaNumber)
+					fmt.Println("AreaZone>>string(data[3]>>>", string(data[3]))
 					if areaNumber == string(data[3]) {
 						pr.QCellCore = "本地"
+					} else {
+						pr.QCellCore = "国内"
 					}
 					return pr, nil
 				}
@@ -214,8 +218,8 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 		return pr, nil
 	} else if len(phone_num) == 8 || len(phone_num) == 7 {
 		pr = &PhoneRecord{
-			PhoneNum: phone_num,
-			CardType: "本地",
+			PhoneNum:  phone_num,
+			QCellCore: "本地",
 		}
 		return pr, nil
 	} else {
