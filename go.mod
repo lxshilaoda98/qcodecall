@@ -1,4 +1,4 @@
-module github.com/xluohome/phonedata
+module github.com/lxshilaoda98/phonedata
 
 go 1.16
 
