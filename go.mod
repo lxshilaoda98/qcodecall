@@ -1,4 +1,4 @@
-module github.com/lxshilaoda98/phonedata
+module github.com/lxshilaoda98/qcodecall
 
 go 1.16
 
