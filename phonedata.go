@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -160,7 +161,14 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 				phone_num[:3], phone_num[:4]).Row().Scan(&pr.Province, &pr.City, &pr.AreaZone)
 			if err != nil {
 				return nil, errors.New("查询数据库异常")
+			} else {
+				if strings.Contains(areaNumber, pr.AreaZone) {
+					pr.QCellCore = "本地"
+				} else {
+					pr.QCellCore = "国内"
+				}
 			}
+
 		} else {
 			var left int32
 			phone_seven_int, err := getN(phone_num[0:7])
@@ -202,8 +210,6 @@ func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord
 						AreaZone: string(data[3]),
 						CardType: card_str,
 					}
-					fmt.Println("areaNumber>>>", areaNumber)
-					fmt.Println("AreaZone>>string(data[3]>>>", string(data[3]))
 					if areaNumber == string(data[3]) {
 						pr.QCellCore = "本地"
 					} else {
