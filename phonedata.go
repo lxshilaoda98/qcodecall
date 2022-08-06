@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/jinzhu/configor"
+	"gorm.io/gorm"
 	"io/ioutil"
-	"os"
 	"path"
+	"regexp"
 	"runtime"
 )
 
@@ -25,12 +27,13 @@ const (
 )
 
 type PhoneRecord struct {
-	PhoneNum string
-	Province string
-	City     string
-	ZipCode  string
-	AreaZone string
-	CardType string
+	PhoneNum  string
+	Province  string
+	City      string
+	ZipCode   string
+	AreaZone  string
+	CardType  string
+	QCellCore string
 }
 
 var (
@@ -46,14 +49,24 @@ var (
 	total_len, firstoffset int32
 )
 
+type Config struct {
+	Phonedata string `default:"phone.dat"`
+}
+
 func init() {
-	dir := os.Getenv("PHONE_DATA_DIR")
+	var c Config
+	confErr := configor.Load(&c, "config.yml")
+	fmt.Println(c)
+	if confErr != nil {
+		panic(confErr)
+	}
+	dir := c.Phonedata
 	if dir == "" {
 		_, fulleFilename, _, _ := runtime.Caller(0)
 		dir = path.Dir(fulleFilename)
 	}
 	var err error
-	content, err = ioutil.ReadFile(path.Join(dir, PHONE_DAT))
+	content, err = ioutil.ReadFile(dir)
 	if err != nil {
 		panic(err)
 	}
@@ -132,53 +145,89 @@ func firstRecordOffset() int32 {
 }
 
 // 二分法查询phone数据
-func Find(phone_num string) (pr *PhoneRecord, err error) {
-	if len(phone_num) < 7 || len(phone_num) > 11 {
-		return nil, errors.New("illegal phone length")
-	}
+func Find(phone_num, areaNumber string, CustomerSqlDB *gorm.DB) (pr *PhoneRecord, err error) {
+	if len(phone_num) == 11 || len(phone_num) == 12 {
+		//先去判断是否是固话
+		//可能是固话..进行查库处理
+		isFixed := checkFixed(phone_num)
+		if isFixed == "是" {
+			pr.QCellCore = "国内"
+			pr.PhoneNum = phone_num
+			//固话的话，直接去调用数据库的数据
+			CustomerSqlDB.Raw("select Province,City,AreaNumber from call_areacode where AreaNumber = ? or AreaNumber = ?",
+				phone_num[:3], phone_num[:4]).Row().Scan(&pr.Province, &pr.City, &pr.AreaZone)
+			if err != nil {
+				return nil, errors.New("查询数据库异常")
+			}
+		} else {
+			var left int32
+			phone_seven_int, err := getN(phone_num[0:7])
+			if err != nil {
+				return nil, errors.New("illegal phone number")
+			}
+			phone_seven_int32 := int32(phone_seven_int)
+			right := (total_len - firstoffset) / PHONE_INDEX_LENGTH
+			for {
+				if left > right {
+					break
+				}
+				mid := (left + right) / 2
+				offset := firstoffset + mid*PHONE_INDEX_LENGTH
+				if offset >= total_len {
+					break
+				}
+				cur_phone := get4(content[offset : offset+INT_LEN])
+				record_offset := get4(content[offset+INT_LEN : offset+INT_LEN*2])
+				card_type := content[offset+INT_LEN*2 : offset+INT_LEN*2+CHAR_LEN][0]
+				switch {
+				case cur_phone > phone_seven_int32:
+					right = mid - 1
+				case cur_phone < phone_seven_int32:
+					left = mid + 1
+				default:
+					cbyte := content[record_offset:]
+					end_offset := int32(bytes.Index(cbyte, []byte("\000")))
+					data := bytes.Split(cbyte[:end_offset], []byte("|"))
+					card_str, ok := CardTypemap[card_type]
+					if !ok {
+						card_str = "未知电信运营商"
+					}
+					pr = &PhoneRecord{
+						PhoneNum: phone_num,
+						Province: string(data[0]),
+						City:     string(data[1]),
+						ZipCode:  string(data[2]),
+						AreaZone: string(data[3]),
+						CardType: card_str,
+					}
+					if areaNumber == string(data[2]) {
+						pr.QCellCore = "本地"
+					}
+					return
+				}
+			}
+			return nil, errors.New("phone's data not found")
 
-	var left int32
-	phone_seven_int, err := getN(phone_num[0:7])
-	if err != nil {
-		return nil, errors.New("illegal phone number")
+		}
+		return pr, nil
+	} else if len(phone_num) == 8 {
+		pr.QCellCore = "本地"
+		pr.PhoneNum = phone_num
+		return pr, nil
+	} else {
+		return nil, errors.New("未知号码:" + phone_num)
 	}
-	phone_seven_int32 := int32(phone_seven_int)
-	right := (total_len - firstoffset) / PHONE_INDEX_LENGTH
-	for {
-		if left > right {
-			break
-		}
-		mid := (left + right) / 2
-		offset := firstoffset + mid*PHONE_INDEX_LENGTH
-		if offset >= total_len {
-			break
-		}
-		cur_phone := get4(content[offset : offset+INT_LEN])
-		record_offset := get4(content[offset+INT_LEN : offset+INT_LEN*2])
-		card_type := content[offset+INT_LEN*2 : offset+INT_LEN*2+CHAR_LEN][0]
-		switch {
-		case cur_phone > phone_seven_int32:
-			right = mid - 1
-		case cur_phone < phone_seven_int32:
-			left = mid + 1
-		default:
-			cbyte := content[record_offset:]
-			end_offset := int32(bytes.Index(cbyte, []byte("\000")))
-			data := bytes.Split(cbyte[:end_offset], []byte("|"))
-			card_str, ok := CardTypemap[card_type]
-			if !ok {
-				card_str = "未知电信运营商"
-			}
-			pr = &PhoneRecord{
-				PhoneNum: phone_num,
-				Province: string(data[0]),
-				City:     string(data[1]),
-				ZipCode:  string(data[2]),
-				AreaZone: string(data[3]),
-				CardType: card_str,
-			}
-			return
-		}
-	}
-	return nil, errors.New("phone's data not found")
 }
+
+//region 验证是否是固话
+func checkFixed(number string) string {
+	reg, _ := regexp.Compile("^(0\\d{2,3}\\d{7,8}|[1-9]\\d{6,7}|123\\d{2}|1[0-2]\\d{1})$")
+	check := reg.FindAllString(number, -1)
+	if len(check) > 0 {
+		return "是"
+	} else {
+		return "否"
+	}
+}
+
+//endregion
